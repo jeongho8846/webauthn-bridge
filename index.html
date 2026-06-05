@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+  <title>생체인증</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f5f5f5;
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; padding: 24px;
+    }
+    .card {
+      background: #fff; border-radius: 16px;
+      padding: 32px 24px; text-align: center;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+      width: 100%; max-width: 340px;
+    }
+    .icon { font-size: 64px; margin-bottom: 16px; }
+    .title { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+    .msg { font-size: 14px; color: #757575; margin-bottom: 24px; line-height: 1.5; }
+    .btn {
+      width: 100%; padding: 14px;
+      border: none; border-radius: 8px;
+      font-size: 16px; font-weight: 600; cursor: pointer;
+      background: #1976D2; color: #fff;
+      margin-top: 8px;
+    }
+    .btn:active { opacity: 0.8; }
+    .btn-gray { background: #f5f5f5; color: #757575; }
+    .spinner {
+      width: 40px; height: 40px; margin: 0 auto 16px;
+      border: 4px solid #E0E0E0; border-top-color: #1976D2;
+      border-radius: 50%; animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+<div class="card">
+  <!-- 로딩 -->
+  <div id="view-loading">
+    <div class="spinner"></div>
+    <div class="title">생체인증 준비 중</div>
+    <div class="msg">잠시만 기다려 주세요...</div>
+  </div>
+
+  <!-- 인증 요청 -->
+  <div id="view-prompt" class="hidden">
+    <div class="icon">🔐</div>
+    <div class="title" id="prompt-title">생체인증</div>
+    <div class="msg" id="prompt-msg">지문 또는 Face ID를 사용하세요.</div>
+    <button class="btn" id="btn-start" onclick="run()">인증 시작</button>
+    <button class="btn btn-gray" onclick="cancel()" style="margin-top:8px;">취소</button>
+  </div>
+
+  <!-- 성공 -->
+  <div id="view-success" class="hidden">
+    <div class="icon">✅</div>
+    <div class="title">인증 완료</div>
+    <div class="msg">창이 자동으로 닫힙니다...</div>
+  </div>
+
+  <!-- 실패 -->
+  <div id="view-error" class="hidden">
+    <div class="icon">❌</div>
+    <div class="title">인증 실패</div>
+    <div class="msg" id="error-msg"></div>
+    <button class="btn" onclick="run()">다시 시도</button>
+    <button class="btn btn-gray" onclick="cancel()">취소</button>
+  </div>
+</div>
+
+<script>
+  const RP_ID = 'jeongho8846.github.io';
+  const params = new URLSearchParams(location.search);
+  const mode      = params.get('mode');      // 'register' | 'auth'
+  const challenge = params.get('challenge');
+  const empId     = params.get('empId')  || '';
+  const uname     = params.get('name')   || empId;
+  const credId    = params.get('credId') || '';
+
+  function showView(id) {
+    ['view-loading','view-prompt','view-success','view-error']
+      .forEach(function(v) { document.getElementById(v).classList.add('hidden'); });
+    document.getElementById(id).classList.remove('hidden');
+  }
+
+  function showError(msg) {
+    document.getElementById('error-msg').textContent = msg;
+    showView('view-error');
+  }
+
+  function sendResult(data) {
+    if (window.opener) window.opener.postMessage(Object.assign({ ok: true }, data), '*');
+    showView('view-success');
+    setTimeout(function() { window.close(); }, 1200);
+  }
+
+  function cancel() {
+    if (window.opener) window.opener.postMessage({ ok: false, msg: '사용자가 취소했습니다.' }, '*');
+    window.close();
+  }
+
+  /* ── ArrayBuffer ↔ Base64url ── */
+  function abToB64(ab) {
+    var bytes = new Uint8Array(ab), bin = '';
+    for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  }
+  function b64ToAb(s) {
+    s = s.replace(/-/g,'+').replace(/_/g,'/');
+    while (s.length % 4) s += '=';
+    var bin = atob(s), ab = new ArrayBuffer(bin.length), v = new Uint8Array(ab);
+    for (var i = 0; i < bin.length; i++) v[i] = bin.charCodeAt(i);
+    return ab;
+  }
+
+  /* ── 등록 ── */
+  async function register() {
+    const options = {
+      challenge: b64ToAb(challenge),
+      rp: { id: RP_ID, name: '출퇴근 시스템' },
+      user: {
+        id: new TextEncoder().encode(empId),
+        name: empId,
+        displayName: uname
+      },
+      pubKeyCredParams: [{ type: 'public-key', alg: -7 }],
+      authenticatorSelection: {
+        authenticatorAttachment: 'platform',
+        userVerification: 'required'
+      },
+      timeout: 60000,
+      attestation: 'none'
+    };
+
+    const cred       = await navigator.credentials.create({ publicKey: options });
+    const authData   = cred.response.getAuthenticatorData();
+    const signCount  = authData.byteLength >= 37 ? new DataView(authData).getUint32(33, false) : 0;
+    const pubKeyRaw  = cred.response.getPublicKey ? cred.response.getPublicKey() : null;
+    const deviceName = detectDevice();
+
+    sendResult({
+      mode:         'register',
+      credentialId: abToB64(cred.rawId),
+      publicKey:    pubKeyRaw ? abToB64(pubKeyRaw) : '',
+      signCount:    signCount,
+      deviceName:   deviceName
+    });
+  }
+
+  /* ── 인증 ── */
+  async function authenticate() {
+    const options = {
+      challenge: b64ToAb(challenge),
+      rpId: RP_ID,
+      allowCredentials: [{ id: b64ToAb(credId), type: 'public-key' }],
+      userVerification: 'required',
+      timeout: 60000
+    };
+
+    const assertion = await navigator.credentials.get({ publicKey: options });
+    const authData  = assertion.response.authenticatorData;
+    const signCount = authData.byteLength >= 37 ? new DataView(authData).getUint32(33, false) : 0;
+
+    sendResult({
+      mode:         'auth',
+      credentialId: abToB64(assertion.rawId),
+      signCount:    signCount
+    });
+  }
+
+  async function run() {
+    showView('view-loading');
+    try {
+      if (!window.PublicKeyCredential)
+        throw new Error('이 기기/브라우저는 생체인증을 지원하지 않습니다.');
+      if (mode === 'register') await register();
+      else await authenticate();
+    } catch(e) {
+      var msg = e.message || '알 수 없는 오류';
+      if (e.name === 'NotAllowedError') msg = '인증이 취소되었거나 시간이 초과되었습니다.';
+      if (e.name === 'InvalidStateError') msg = '이미 등록된 기기입니다.';
+      showError(msg);
+    }
+  }
+
+  function detectDevice() {
+    var ua = navigator.userAgent;
+    if (/iPhone/.test(ua)) return 'iPhone';
+    if (/iPad/.test(ua))   return 'iPad';
+    if (/Android/.test(ua)) return 'Android(' + (ua.match(/Android ([0-9.]+)/) || ['','?'])[1] + ')';
+    if (/Windows/.test(ua)) return 'Windows PC';
+    if (/Mac/.test(ua))    return 'Mac';
+    return 'Unknown';
+  }
+
+  /* ── 초기화 ── */
+  window.addEventListener('load', function() {
+    if (mode === 'register') {
+      document.getElementById('prompt-title').textContent = '기기 등록';
+      document.getElementById('prompt-msg').textContent  = '이 기기의 지문 또는 Face ID를 등록합니다.';
+    } else {
+      document.getElementById('prompt-title').textContent = '본인 확인';
+      document.getElementById('prompt-msg').textContent  = '지문 또는 Face ID로 본인을 확인합니다.';
+    }
+    showView('view-prompt');
+  });
+</script>
+</body>
+</html>
