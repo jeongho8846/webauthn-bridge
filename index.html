@@ -187,18 +187,60 @@
     });
   }
 
+  async function collectDiag() {
+    var d = {
+      hasPK:       window.PublicKeyCredential ? '1' : '0',
+      hasCreds:    navigator.credentials     ? '1' : '0',
+      secureCtx:   window.isSecureContext    ? '1' : '0',
+      standalone:  (window.navigator.standalone === true) ? '1' : '0',
+      online:      navigator.onLine          ? '1' : '0',
+      hasAuth:     '0',
+      condMed:     'n/a',
+      iosVer:      (navigator.userAgent.match(/OS (\d+)[_.](\d+)/) || ['','?','?']).slice(1,3).join('.'),
+      ua:          navigator.userAgent.substring(0, 200)
+    };
+    if (window.PublicKeyCredential) {
+      try { d.hasAuth = (await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()) ? '1' : '0'; }
+      catch(e) { d.hasAuth = 'err:' + e.name; }
+      try { d.condMed = (await PublicKeyCredential.isConditionalMediationAvailable()) ? '1' : '0'; }
+      catch(e) { d.condMed = 'n/a'; }
+    }
+    return d;
+  }
+
   async function run() {
     showView('view-loading');
+    var diag = await collectDiag();
     try {
       if (!window.PublicKeyCredential)
         throw new Error('이 기기/브라우저는 생체인증을 지원하지 않습니다.');
+
       if (mode === 'register') await register();
       else await authenticate();
     } catch(e) {
-      var msg = e.message || '알 수 없는 오류';
-      if (e.name === 'NotAllowedError') msg = '인증이 취소되었거나 시간이 초과되었습니다.';
-      if (e.name === 'InvalidStateError') msg = '이미 등록된 기기입니다.';
-      showError(msg);
+      var errName = e.name || 'UnknownError';
+      var errMsg  = e.message || '알 수 없는 오류';
+
+      if (returnUrl) {
+        var errUrl = new URL(returnUrl);
+        errUrl.searchParams.set('wa_error',    errName);
+        errUrl.searchParams.set('wa_errMsg',   errMsg.substring(0, 150));
+        errUrl.searchParams.set('wa_hasAuth',  diag.hasAuth);
+        errUrl.searchParams.set('wa_condMed',  diag.condMed);
+        errUrl.searchParams.set('wa_hasPK',    diag.hasPK);
+        errUrl.searchParams.set('wa_standalone', diag.standalone);
+        errUrl.searchParams.set('wa_iosVer',   diag.iosVer);
+        errUrl.searchParams.set('wa_secureCtx',diag.secureCtx);
+        errUrl.searchParams.set('wa_online',   diag.online);
+        errUrl.searchParams.set('wa_ua',       diag.ua);
+        window.location.href = errUrl.toString();
+        return;
+      }
+
+      var msg = errMsg;
+      if (errName === 'NotAllowedError')   msg = '인증이 취소되었거나 시간이 초과되었습니다.';
+      if (errName === 'InvalidStateError') msg = '이미 등록된 기기입니다.';
+      showError(msg + ' [' + errName + ' hasAuth=' + diag.hasAuth + ' condMed=' + diag.condMed + ' iosVer=' + diag.iosVer + ']');
     }
   }
 
