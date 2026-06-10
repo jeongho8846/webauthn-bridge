@@ -147,7 +147,7 @@
         residentKey: 'discouraged',
         requireResidentKey: false
       },
-      timeout: 60000,
+      timeout: 15000,
       attestation: 'none'
     };
 
@@ -173,7 +173,7 @@
       rpId: RP_ID,
       allowCredentials: [{ id: b64ToAb(credId), type: 'public-key' }],
       userVerification: 'required',
-      timeout: 60000
+      timeout: 15000
     };
 
     const assertion = await navigator.credentials.get({ publicKey: options });
