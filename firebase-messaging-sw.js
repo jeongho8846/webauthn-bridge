@@ -11,12 +11,6 @@ firebase.initializeApp({
   appId:             '1:318867913430:web:19280fa7cf1d34cc292777'
 });
 
-// webpush.notification 으로 보내면 브라우저가 자동 표시.
-// 데이터 전용 메시지 대비용 백그라운드 핸들러(선택).
-const messaging = firebase.messaging();
-messaging.onBackgroundMessage(function (payload) {
-  const n = (payload && payload.notification) || {};
-  if (n.title) {
-    self.registration.showNotification(n.title, { body: n.body || '' });
-  }
-});
+// firebase.messaging() 초기화만으로 webpush.notification 은 브라우저가 자동 1회 표시.
+// onBackgroundMessage 에서 showNotification 을 또 호출하면 알림이 2번 뜨므로 두지 않는다.
+firebase.messaging();
