@@ -240,7 +240,10 @@
       var msg = errMsg;
       if (errName === 'NotAllowedError')   msg = '인증이 취소되었거나 시간이 초과되었습니다.';
       if (errName === 'InvalidStateError') msg = '이미 등록된 기기입니다.';
-      showError(msg + ' [' + errName + ' hasAuth=' + diag.hasAuth + ' condMed=' + diag.condMed + ' iosVer=' + diag.iosVer + ']');
+      var detail = msg + ' [' + errName + ' hasAuth=' + diag.hasAuth + ' condMed=' + diag.condMed + ' iosVer=' + diag.iosVer + ']';
+
+      if (window.opener) window.opener.postMessage({ ok: false, msg: detail }, '*');
+      showError(detail);
     }
   }
 
